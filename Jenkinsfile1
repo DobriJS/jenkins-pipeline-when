@@ -33,3 +33,47 @@ pipeline {
             }
             steps {
                 echo 'Creating Apache container...'
+                sh 'docker run -dit --name app-web -p 9100:80 -v /home/jenkins/app-web:/usr/local/apache2/htdocs/ httpd'
+            }
+        }
+
+        // Nginx Web Server
+        stage('Create the Nginx container') {
+            when {
+                environment name: 'WEBSERVER', value: 'Nginx'
+            }
+            steps {
+                echo 'Creating Nginx container...'
+                sh 'docker run -dit --name app-web -p 9100:80 -v /home/jenkins/app-web:/usr/share/nginx/html nginx'
+            }
+        }
+
+        stage('Copy the web application to the container directory') {
+            steps {
+                echo 'Copying web application...'
+                sh 'cp -r web/* /home/jenkins/app-web'
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'These steps are always executed'
+        }
+
+        success {
+            echo 'The deployment has worked'
+            archiveArtifacts(
+                allowEmptyArchive: true,
+                artifacts: 'web/*',
+                followSymlinks: false
+            )
+            cleanWs()
+        }
+
+        failure {
+            echo 'An error has occurred'
+        }
+    }
+}
+
