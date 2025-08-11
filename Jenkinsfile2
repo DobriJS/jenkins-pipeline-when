@@ -1,131 +1,137 @@
 pipeline {
     agent any
+
     parameters {
-       choice choices: ['Apache', 'Nginx'], name: 'WEBSERVER'
-       choice choices: ['Development', 'Test','Production'], name: 'ENV'
+        choice(
+            choices: ['Apache', 'Nginx'],
+            name: 'WEBSERVER',
+            description: 'Select the web server to deploy'
+        )
+        choice(
+            choices: ['Development', 'Test', 'Production'],
+            name: 'ENV',
+            description: 'Select the environment'
+        )
     }
-       
+
     stages {
-        stage('Create  directory for the WEB Application')
-        {
+
+        stage('Create directory for the WEB Application') {
             when { 
                 equals(actual: currentBuild.number, expected: 1)
             }
-            steps{
-               
-                //Fisrt, drop the directory if exists
-                sh 'rm -rf /home/jenkins/app-web'
-                //Create the directory
-                sh 'mkdir /home/jenkins/app-web'
-                
+            steps {
+                // First, drop the directory if it exists
+                sh 'rm -rf $(pwd)/app-web'
+                // Create the directory
+                sh 'mkdir $(pwd)/app-web'
             }
         }
-        stage('Drop the container'){   
-            
+
+        stage('Drop the container') {
             steps {
-            echo 'droping the container...'
-            sh 'docker rm -f app-web'
+                echo 'Dropping the container...'
+                sh 'docker rm -f app-web || true'
             }
         }
 
         // Apache Webserver in Development
         stage('Create the Apache container in Development') {
-             when {
+            when {
                 allOf {           
-                 environment name: 'WEBSERVER', value: 'Apache'
-                 environment name: 'ENV', value: 'Development'                
+                    environment name: 'WEBSERVER', value: 'Apache'
+                    environment name: 'ENV', value: 'Development'
                 }
-             }
+            }
             steps {
-            echo 'Creating the container...'
-            sh 'docker run -dit --name app-web -p 9100:80  -v /home/jenkins/app-web:/usr/local/apache2/htdocs/ httpd'
+                echo 'Creating Apache container in Development...'
+                sh 'docker run -dit --name app-web -p 9100:80 -v $(pwd)/app-web:/usr/local/apache2/htdocs/ httpd'
             }
         }
-        //Nginx webserver in Test
+
+        // Nginx Webserver in Test
         stage('Create the Nginx container in Test') {
-             when {
+            when {
                 allOf {           
-                 environment name: 'WEBSERVER', value: 'Nginx'
-                 environment name: 'ENV', value: 'Test'
+                    environment name: 'WEBSERVER', value: 'Nginx'
+                    environment name: 'ENV', value: 'Test'
+                }
             }
-             }
             steps {
-            echo 'Creating the container...'
-            sh 'docker run -dit --name app-web -p 9100:80  -v /home/jenkins/app-web:/usr/share/nginx/html nginx'
-         
+                echo 'Creating Nginx container in Test...'
+                sh 'docker run -dit --name app-web -p 9100:80 -v $(pwd)/app-web:/usr/share/nginx/html nginx'
             }
         }
-        //Nginx Webserver in Production
+
+        // Nginx Webserver in Production
         stage('Create the Nginx container in Production') {
-             when {
+            when {
                 allOf {           
-                 environment name: 'WEBSERVER', value: 'Nginx'
-                 environment name: 'ENV', value: 'Production'
+                    environment name: 'WEBSERVER', value: 'Nginx'
+                    environment name: 'ENV', value: 'Production'
+                }
             }
-             }
             steps {
-            echo 'Creating the container...'
-            sh 'docker run -dit --name app-web -p 9100:80  -v /home/jenkins/app-web:/usr/share/nginx/html nginx'
-         
+                echo 'Creating Nginx container in Production...'
+                sh 'docker run -dit --name app-web -p 9100:80 -v $(pwd)/app-web:/usr/share/nginx/html nginx'
             }
         }
-        //Error is Webserver is Nginx and Env is Development
-         stage('Error message Nginx') {
-           when {
+
+        // Error if Webserver is Nginx in Development
+        stage('Error message for Nginx in Development') {
+            when {
                 allOf {
-                     environment name: 'WEBSERVER', value: 'Nginx'
-                     environment name: 'ENV', value: 'Development'                       
-                     }               
+                    environment name: 'WEBSERVER', value: 'Nginx'
+                    environment name: 'ENV', value: 'Development'
+                }
             }
-
             steps {
-            echo 'Nginx cannot be deployed in Development...'
-         
+                echo 'ERROR: Nginx cannot be deployed in Development environment...'
             }
         }
 
-        //Error is Webserver is Apache and Env is Test or Production
-         stage('Error message Apache') {
-           when {
+        // Error if Webserver is Apache in Test or Production
+        stage('Error message for Apache in Test/Production') {
+            when {
                 allOf {
                     environment name: 'WEBSERVER', value: 'Apache'
                     anyOf {
                         environment name: 'ENV', value: 'Test'
                         environment name: 'ENV', value: 'Production'
-                     }
+                    }
                 }
             }
-
             steps {
-            echo 'Apache cannot be deployed in Test or Production environments...'
-         
+                echo 'ERROR: Apache cannot be deployed in Test or Production environments...'
             }
         }
 
-        //Copy the application   
+        // Copy the application
         stage('Copy the web application to the container directory') {
             steps {
-                echo 'Copying web application...'             
-                sh 'cp -r web/* /home/jenkins/app-web'
+                echo 'Copying web application...'
+                sh 'cp -r web/* $(pwd)/app-web'
             }
         }
     }
 
     post {
         always {
-            echo 'These steps are always executed'   
+            echo 'These steps are always executed'
         }
-      
-        success {
-        // One or more steps need to be included within each condition's block.
-          echo 'the deployment has worked'
-          archiveArtifacts allowEmptyArchive: true, artifacts: 'web/*', followSymlinks: false
-          cleanWs()         
 
-       }
-       failure {
-        // One or more steps need to be included within each condition's block.
-        echo 'An error has ocurred'       
-       }
+        success {
+            echo 'The deployment has worked'
+            archiveArtifacts(
+                allowEmptyArchive: true,
+                artifacts: 'web/*',
+                followSymlinks: false
+            )
+            cleanWs()
+        }
+
+        failure {
+            echo 'An error has occurred'
+        }
     }
 }
